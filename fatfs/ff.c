@@ -3651,8 +3651,8 @@ FRESULT f_mount (
 	FRESULT res;
 	const TCHAR *rp = path;
 
-
-	/* Get logical drive number */
+    reset_open_count();
+    /* Get logical drive number */
 	vol = get_ldnumber(&rp);
 	if (vol < 0) return FR_INVALID_DRIVE;
 	cfs = FatFs[vol];					/* Pointer to fs object */
@@ -3711,6 +3711,7 @@ FRESULT f_open (
 	mode &= FF_FS_READONLY ? FA_READ : FA_READ | FA_WRITE | FA_CREATE_ALWAYS | FA_CREATE_NEW | FA_OPEN_ALWAYS | FA_OPEN_APPEND;
 	res = mount_volume(&path, &fs, mode);
 	if (res == FR_OK) {
+		if (mode & ~FA_READ) increase_open_count();
 		dj.obj.fs = fs;
 		INIT_NAMBUF(fs);
 		res = follow_path(&dj, path);	/* Follow the file path */
@@ -3866,9 +3867,14 @@ FRESULT f_open (
 		}
 
 		FREE_NAMBUF();
+		if ((res != FR_OK) && (mode & ~FA_READ)) {
+        	decrease_open_count();
+    	}
 	}
 
-	if (res != FR_OK) fp->obj.fs = 0;	/* Invalidate file object on error */
+	if (res != FR_OK) {
+		fp->obj.fs = 0;	/* Invalidate file object on error */
+    }
 
 	LEAVE_FF(fs, res);
 }
@@ -4193,7 +4199,7 @@ FRESULT f_close (
 
 #if !FF_FS_READONLY
 	res = f_sync(fp);					/* Flush cached data */
-	if (res == FR_OK)
+    if (res == FR_OK)
 #endif
 	{
 		res = validate(&fp->obj, &fs);	/* Lock volume */
@@ -4209,7 +4215,7 @@ FRESULT f_close (
 #endif
 		}
 		//reconnect the MSD to refresh the file system on the PC side
-		if (fp->flag & FA_WRITE) refresh_usbmsdrive();
+		if (fp->flag & ~FA_READ) decrease_open_count();
 	}
 	return res;
 }
@@ -4936,8 +4942,8 @@ FRESULT f_unlink (
 #endif
 	DEF_NAMBUF
 
-
-	/* Get logical drive */
+    increase_open_count();
+    /* Get logical drive */
 	res = mount_volume(&path, &fs, FA_WRITE);
 	if (res == FR_OK) {
 		dj.obj.fs = fs;
@@ -5002,13 +5008,12 @@ FRESULT f_unlink (
 #endif
 				}
 				if (res == FR_OK) res = sync_fs(fs);
-				//reconnect the MSD to refresh the file system on the PC side
-				refresh_usbmsdrive();
 			}
 		}
 		FREE_NAMBUF();
 	}
-
+	//reconnect the MSD to refresh the file system on the PC side
+	decrease_open_count();
 	LEAVE_FF(fs, res);
 }
 
@@ -5030,8 +5035,8 @@ FRESULT f_mkdir (
 	DWORD dcl, pcl, tm;
 	DEF_NAMBUF
 
-
-	res = mount_volume(&path, &fs, FA_WRITE);	/* Get logical drive */
+    increase_open_count();
+    res = mount_volume(&path, &fs, FA_WRITE);	/* Get logical drive */
 	if (res == FR_OK) {
 		dj.obj.fs = fs;
 		INIT_NAMBUF(fs);
@@ -5085,8 +5090,6 @@ FRESULT f_mkdir (
 				}
 				if (res == FR_OK) {
 					res = sync_fs(fs);
-					//reconnect the MSD to refresh the file system on the PC side
-					refresh_usbmsdrive();
 				}
 			} else {
 				remove_chain(&sobj, dcl, 0);		/* Could not register, remove the allocated cluster */
@@ -5094,7 +5097,8 @@ FRESULT f_mkdir (
 		}
 		FREE_NAMBUF();
 	}
-
+	//reconnect the MSD to refresh the file system on the PC side
+	decrease_open_count();
 	LEAVE_FF(fs, res);
 }
 
@@ -5117,8 +5121,8 @@ FRESULT f_rename (
 	LBA_t sect;
 	DEF_NAMBUF
 
-
-	get_ldnumber(&path_new);						/* Snip the drive number of new name off */
+    increase_open_count();
+    get_ldnumber(&path_new);						/* Snip the drive number of new name off */
 	res = mount_volume(&path_old, &fs, FA_WRITE);	/* Get logical drive of the old object */
 	if (res == FR_OK) {
 		djo.obj.fs = fs;
@@ -5193,14 +5197,13 @@ FRESULT f_rename (
 				res = dir_remove(&djo);		/* Remove old entry */
 				if (res == FR_OK) {
 					res = sync_fs(fs);
-                    refresh_usbmsdrive();
                 }
 			}
 /* End of the critical section */
 		}
 		FREE_NAMBUF();
 	}
-
+	decrease_open_count();
 	LEAVE_FF(fs, res);
 }
 
@@ -5420,7 +5423,7 @@ FRESULT f_setlabel (
 	DWORD dc;
 #endif
 
-	/* Get logical drive */
+    /* Get logical drive */
 	res = mount_volume(&label, &fs, FA_WRITE);
 	if (res != FR_OK) LEAVE_FF(fs, res);
 
@@ -5472,6 +5475,7 @@ FRESULT f_setlabel (
 	}
 
 	/* Set volume label */
+	increase_open_count();
 	dj.obj.fs = fs; dj.obj.sclust = 0;	/* Open root directory */
 	res = dir_sdi(&dj, 0);
 	if (res == FR_OK) {
@@ -5511,7 +5515,7 @@ FRESULT f_setlabel (
 			}
 		}
 	}
-    refresh_usbmsdrive();
+    decrease_open_count();
     LEAVE_FF(fs, res);
 }
 

@@ -37,3 +37,14 @@ void make_usbmsdrive_writable(void);
 
 //remove before jump to bootloader
 void eject_usbmsdrive(void);
+
+//increase the open handle count
+//will eject the medium when the count becomes greater than 0
+void increase_open_count(void);
+
+//decrease the open handle count
+//will insert the medium when the count becomes 0
+void decrease_open_count(void);
+
+//reset the open handle count to 0
+void reset_open_count(void);

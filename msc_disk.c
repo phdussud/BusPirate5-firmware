@@ -63,6 +63,8 @@ static volatile bool cmd_ack = false;
 static volatile bool writable = true;
 static volatile bool host_ejected = false;
 
+static volatile int open_local_handle_count = 0;
+
 enum
 {
   MSC_DEMO_DISK_BLOCK_NUM  = 16, // 8KB is the smallest size that windows allow to mount
@@ -440,6 +442,30 @@ void make_usbmsdrive_writable(void)
   writable = true;
   //insert the drive back
   insert_usbmsdrive();
+}
+
+// increase the open handle count
+// will eject the medium when the count becomes greater than 0
+void increase_open_count(void)
+{
+    open_local_handle_count++;
+    if (open_local_handle_count > 0) {
+        eject_usbmsdrive();
+    }
+}
+
+// decrease the open handle count
+// will insert the medium when the count becomes 0
+void decrease_open_count(void)
+{
+    open_local_handle_count--;
+    if (open_local_handle_count <= 0) {
+        insert_usbmsdrive();
+    }
+}
+
+void reset_open_count(void) {
+    open_local_handle_count = 0;
 }
 
 #endif
